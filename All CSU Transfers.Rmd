@@ -1,0 +1,129 @@
+---
+title: "CSU Transfers from California Community Colleges"
+author: "Wilmer Tejada"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+    runtime: shiny
+---
+
+
+```{r Libraries, include=FALSE}
+library(knitr)
+library(flexdashboard)
+library(tidyverse)
+library(lettercase)
+library(plotly)
+library(shiny)
+library(d3heatmap)
+library(rmarkdown)
+```
+
+
+```{r Load Data, echo = FALSE}
+# Source: http://asd.calstate.edu/ccct/2017-2018/SummaryYear.asp
+CSU_Transfers = read_csv("data/CSU_Transfers.csv",locale = locale(encoding = 'ISO-8859-1'))
+```
+
+```{r Data Wrangling, echo = FALSE}
+CSU = CSU_Transfers %>%
+  select(Sex,
+         Ethnicity = `Ethnic Group Desc`,
+         College = `Institution Name`, 
+         `College Year`, 
+         TransferCampus = `CSU Campus`, 
+         Count = `Number of Transfers`) %>%
+  mutate(`College Year` = as.numeric(str_sub(`College Year`, 1,4))) %>%
+  group_by(College,`College Year`,TransferCampus,Sex,Ethnicity) %>% summarise(Count = sum(Count))
+
+
+```
+
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+      selectInput("College", 
+                  label = "Select College", 
+                  choices = unique(CSU$College))
+      
+      selectInput("Gender", 
+                  label = "Select Gender", 
+                  choices = unique(CSU$Sex))
+      
+      selectInput("Race", 
+                  label = "Select Ethnicity", 
+                  choices = unique(CSU$Ethnicity))
+      
+      sliderInput("Time",
+                  label = "Select Timeframe:",
+                  min = min(CSU$`College Year`),
+                  max = max(CSU$`College Year`),
+                  value = c(min(CSU$`College Year`),max(CSU$`College Year`)),
+                  sep = "")
+      
+      helpText("Source:\n http://asd.calstate.edu/ccct/2017-2018/SummaryYear.asp")
+```
+
+
+Row {data-height=50}
+-----------------------------------------------------------------------
+
+### Student Headcounts {data-width=200}
+
+```{r}
+
+
+
+renderD3heatmap({
+
+  p = CSU %>%
+        filter(College == input$College &
+               Sex == input$Gender & 
+               Ethnicity == input$Race &
+               `College Year` >= input$Time[1] &
+               `College Year` <= input$Time[2]) %>%
+        ungroup() %>%
+        select(Year = `College Year`,TransferCampus,Count) %>%
+        arrange(Year) %>%
+        spread(key = Year, value = Count) %>%
+        column_to_rownames("TransferCampus") 
+
+p[ , order(names(p))]
+
+p[is.na(p)]=0
+d3heatmap(p, scale = "column", Colv = FALSE)
+})
+
+
+```
+
+Row {data-height=50}
+-----------------------------------------------------------------------
+### Student Headcounts Table {data-width=200}
+
+```{r}
+
+renderTable({
+  p = CSU %>%
+        filter(College == input$College &
+               Sex == input$Gender & 
+               Ethnicity == input$Race &
+              `College Year` >= input$Time[1] &
+               `College Year` <= input$Time[2]) %>%
+        ungroup() %>%
+        select(Year = `College Year`,TransferCampus,Count) %>%
+        arrange(Year) %>%
+        spread(key = Year, value = Count)
+
+p[ , order(names(p))]
+
+p[is.na(p)]=0
+xtable::xtable(p)
+})
+```
+
+
