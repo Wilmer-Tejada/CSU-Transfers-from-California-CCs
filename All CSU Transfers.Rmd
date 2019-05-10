@@ -1,6 +1,6 @@
 ---
 title: "CSU Transfers from California Community Colleges"
-author: "Wilmer Tejada"
+author: "-Wilmer Tejada"
 output: 
   flexdashboard::flex_dashboard:
     orientation: rows
@@ -19,12 +19,14 @@ library(plotly)
 library(shiny)
 library(d3heatmap)
 library(rmarkdown)
+library(xtable)
+library(rsconnect)
 ```
 
 
 ```{r Load Data, echo = FALSE}
 # Source: http://asd.calstate.edu/ccct/2017-2018/SummaryYear.asp
-CSU_Transfers = read_csv("data/CSU_Transfers.csv",locale = locale(encoding = 'ISO-8859-1'))
+CSU_Transfers = read_csv("data/CSU_Transfers.csv",locale = locale(encoding = 'Latin1'))#because of Canada college.
 ```
 
 ```{r Data Wrangling, echo = FALSE}
@@ -52,11 +54,17 @@ Inputs {.sidebar}
       
       selectInput("Gender", 
                   label = "Select Gender", 
-                  choices = unique(CSU$Sex))
+                  choices = unique(CSU$Sex),
+                  selected = NULL,
+                   multiple = FALSE
+                    , selectize = FALSE)
       
       selectInput("Race", 
                   label = "Select Ethnicity", 
-                  choices = unique(CSU$Ethnicity))
+                  choices = unique(CSU$Ethnicity),
+                  selected = NULL,
+                   multiple = FALSE
+                , selectize = FALSE)
       
       sliderInput("Time",
                   label = "Select Timeframe:",
@@ -122,8 +130,11 @@ renderTable({
 p[ , order(names(p))]
 
 p[is.na(p)]=0
-xtable::xtable(p)
+xtable(p)
 })
 ```
 
+```{r}
+deployApp(appName = "CSU_Transfers_from_CCCs")
+```
 
