@@ -17,30 +17,18 @@ library(tidyverse)
 library(lettercase)
 library(plotly)
 library(shiny)
-library(d3heatmap)
+library(ggthemes)
+library(shinyWidgets)
 library(rmarkdown)
-library(xtable)
-library(rsconnect)
+library(kableExtra)
+#library(rsconnect)
 ```
 
 
 ```{r Load Data, echo = FALSE}
 # Source: http://asd.calstate.edu/ccct/2017-2018/SummaryYear.asp
 CSU_Transfers = read_csv("data/CSU_Transfers.csv",locale = locale(encoding = 'Latin1'))#because of Canada college.
-```
-
-```{r Data Wrangling, echo = FALSE}
-CSU = CSU_Transfers %>%
-  select(Sex,
-         Ethnicity = `Ethnic Group Desc`,
-         College = `Institution Name`, 
-         `College Year`, 
-         TransferCampus = `CSU Campus`, 
-         Count = `Number of Transfers`) %>%
-  mutate(`College Year` = as.numeric(str_sub(`College Year`, 1,4))) %>%
-  group_by(College,`College Year`,TransferCampus,Sex,Ethnicity) %>% summarise(Count = sum(Count))
-
-
+CSU_Transfers = CSU_Transfers %>% mutate(`College Year` = as.numeric(str_sub(`College Year`, 1,4)))
 ```
 
 
@@ -48,93 +36,98 @@ Inputs {.sidebar}
 -----------------------------------------------------------------------
 
 ```{r}
+      helpText("Double click on a Campus on the Plot to isolate it.")
+      
       selectInput("College", 
-                  label = "Select College", 
-                  choices = unique(CSU$College))
+                  label = "Select Community College", 
+                  choices = unique(CSU_Transfers$`Institution Name`))
       
-      selectInput("Gender", 
+      prettyCheckboxGroup("Gender", 
                   label = "Select Gender", 
-                  choices = unique(CSU$Sex),
-                  selected = NULL,
-                   multiple = FALSE
-                    , selectize = FALSE)
+                  choices = unique(CSU_Transfers$Sex),
+                  selected  = unique(CSU_Transfers$Sex),
+                  icon = icon("check"))
       
-      selectInput("Race", 
+      prettyCheckboxGroup("Race", 
                   label = "Select Ethnicity", 
-                  choices = unique(CSU$Ethnicity),
-                  selected = NULL,
-                   multiple = FALSE
-                , selectize = FALSE)
+                  choices = unique(CSU_Transfers$`Ethnic Group Desc`),
+                  selected = unique(CSU_Transfers$`Ethnic Group Desc`),
+                  icon = icon("check"))
       
       sliderInput("Time",
                   label = "Select Timeframe:",
-                  min = min(CSU$`College Year`),
-                  max = max(CSU$`College Year`),
-                  value = c(min(CSU$`College Year`),max(CSU$`College Year`)),
+                  min = min(CSU_Transfers$`College Year`),
+                  max = max(CSU_Transfers$`College Year`),
+                  value = c(min(CSU_Transfers$`College Year`),max(CSU_Transfers$`College Year`)),
                   sep = "")
       
       helpText("Source:\n http://asd.calstate.edu/ccct/2017-2018/SummaryYear.asp")
 ```
 
+```{r Data Wrangling, echo = FALSE}
 
-Row {data-height=50}
+dataset1 <- reactive({
+CSU = CSU_Transfers %>%
+  select(Sex,
+         Ethnicity = `Ethnic Group Desc`,
+         College = `Institution Name`, 
+         `College Year`, 
+         TransferCampus = `CSU Campus`, 
+         Count = `Number of Transfers`) %>%
+  group_by(College,`College Year`,TransferCampus,Sex,Ethnicity) %>% summarise(Count = sum(Count)) %>%
+  filter(College == input$College) %>%
+  filter(Ethnicity %in% input$Race ) %>%
+  filter(Sex %in% input$Gender ) %>%
+  filter(`College Year` >= input$Time[1] &
+         `College Year` <= input$Time[2]) %>%
+   ungroup() %>%
+        select(Year = `College Year`,TransferCampus,Count) %>%
+        group_by(Year, TransferCampus) %>%
+        summarise(Count = sum(Count)) %>%
+        arrange(Year) %>%
+        ungroup()
+
+})
+```
+Column {.tabset}
 -----------------------------------------------------------------------
 
-### Student Headcounts {data-width=200}
+### Student Headcounts
 
 ```{r}
+renderPlotly({
+  
+ p = dataset1() %>% mutate(Year = as.character(Year)) %>% 
+  ggplot(aes(x = Year, y = Count,group = TransferCampus )) +
+   geom_point() +
+   geom_line(aes(col = TransferCampus)) +
+   ggtitle("Transfers to CSU Campuses by Year") +
+   theme_fivethirtyeight() +
+   scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
 
-
-
-renderD3heatmap({
-
-  p = CSU %>%
-        filter(College == input$College &
-               Sex == input$Gender & 
-               Ethnicity == input$Race &
-               `College Year` >= input$Time[1] &
-               `College Year` <= input$Time[2]) %>%
-        ungroup() %>%
-        select(Year = `College Year`,TransferCampus,Count) %>%
-        arrange(Year) %>%
-        spread(key = Year, value = Count) %>%
-        column_to_rownames("TransferCampus") 
-
-p[ , order(names(p))]
-
-p[is.na(p)]=0
-d3heatmap(p, scale = "column", Colv = FALSE)
+ ggplotly(p)
 })
-
 
 ```
 
-Row {data-height=50}
------------------------------------------------------------------------
-### Student Headcounts Table {data-width=200}
+
+###  Table 
 
 ```{r}
 
-renderTable({
-  p = CSU %>%
-        filter(College == input$College &
-               Sex == input$Gender & 
-               Ethnicity == input$Race &
-              `College Year` >= input$Time[1] &
-               `College Year` <= input$Time[2]) %>%
-        ungroup() %>%
-        select(Year = `College Year`,TransferCampus,Count) %>%
-        arrange(Year) %>%
-        spread(key = Year, value = Count)
-
-p[ , order(names(p))]
-
-p[is.na(p)]=0
-xtable(p)
-})
+renderUI({
+    dataset1() %>%
+      spread(key = Year, value = Count) %>%
+      column_to_rownames("TransferCampus") %>%
+      kable("html")  %>%
+      kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+      column_spec(1, bold = T, border_right = T) %>%
+      HTML()
+    
+  }) 
 ```
 
 ```{r}
-deployApp(appName = "CSU_Transfers_from_CCCs")
+#deployApp(appName = "CSU_Transfers_from_CCCs")
 ```
 
